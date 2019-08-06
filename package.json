@@ -1,0 +1,13 @@
+{
+  "main": "reddit.js",
+  "dependencies": {
+    "module-library": "*",
+    "web-site": "*",
+    "browser-bridge": "*",
+    "web-element": "*"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/erikpukinskis/reddit-if-there-were-no-such-thing-as-apps.git"
+  }
+}
