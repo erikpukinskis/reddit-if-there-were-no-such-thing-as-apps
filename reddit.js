@@ -189,7 +189,7 @@ library.using(
             "cursor": "pointer",
             "padding-left": "22px"}),
           icon("updoot"),
-          "27.2k"),
+          " 27.2k"),
         element(
           element.style({
             "padding-left": "22px"}),
@@ -214,6 +214,7 @@ library.using(
 
       element.style(
         "body", {
+          "zoom": "0.75",
           "margin": "15px",
           "font-size": "32px",
           "line-height": "44px",         
