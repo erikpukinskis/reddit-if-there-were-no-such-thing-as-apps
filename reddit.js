@@ -3,17 +3,26 @@ var library = require("module-library")(require)
 // The Reddit Everyone Deserves Dang It
 
 library.using(
-  ["web-site", "browser-bridge", "web-element", "add-html", "crypto"],
-  function(WebSite, BrowserBridge, element, addHtml, crypto) {
+  ["web-site", "browser-bridge", "web-element", "add-html", "crypto", "make-request"],
+  function(WebSite, BrowserBridge, element, addHtml, crypto, makeRequest) {
 
-    var bridge = new BrowserBridge()
+    var baseBridge = new BrowserBridge()
     var site = new WebSite()
 
-    rando(function(rand) {
-      var redditOauthUrl = "https://www.reddit.com/api/v1/authorize?client_id="+process.env.REDDIT_CLIENT_ID+"&response_type=code&state="+rand+"&redirect_uri="+encodeURIComponent("http://www.redditiftherewerenosuchthingasapps.com")+"&duration=permanent&scope=mysubreddits"
-      console.log(redditOauthUrl)
-    })
+    var states = {}
 
+    var encodedRedirectUri = encodeURIComponent(
+      "http://localhost:3317/")
+
+    function getAuthUrl(callback) {
+      console.log("getting auth url")
+      rando(
+        function(state) {
+          states[state] = true
+          var redditOauthUrl =
+            "https://www.reddit.com/api/v1/authorize?client_id=vILB1viG9BmpYg&response_type=code&state="+state+"&redirect_uri="+encodedRedirectUri+"&duration=temporary&scope=mysubreddits"
+            callback(
+              redditOauthUrl)})}
 
     function rando(callback) {
       crypto.randomBytes(
@@ -109,7 +118,10 @@ library.using(
       element(
         icon("pencil"),
         icon("search"),
-        icon("hamburger")),
+        element(
+          "a",{
+          "href": "/auth"},
+          icon("hamburger"))),
     ])
 
     var sort = element(
@@ -131,84 +143,85 @@ library.using(
         "margin": "0 8px"}),
       "&bull;")
 
-    var meta = element(
-      element.style({
-        "display": "flex",
-        "flex-direction": "row"}),[
-      element(".sub", "r/funny"),
-      dot(),
-      "5h",
-      dot(),
-      "u/charbodactyl",
-      dot()])
+    var page
 
-    var domain = element(
-      "a",{
-      "href": ""},
-      element.raw("i.redd.it "),
-      icon("escape"))
-
-    var actions = element(
-      ".actions",
-      element.style({
-        "width": "100%",
-        "line-height": "66px",
-        "display": "flex",
-        "flex-direction": "row",
-        "justify-content": "space-between"}),[
-      element(
+    function post(){
+      var meta = element(
         element.style({
           "display": "flex",
           "flex-direction": "row"}),[
-        element(
-          element.style({
-            "cursor": "pointer",
-            "padding-right": "44px"}),
-          icon("share"),
-          " Share"),
-        element(
-          icon("bubble"),
-          " 257",
-          element.style({
-            "cursor": "pointer",
-            "padding-right": "44px"})),
-      ]),
-      element(
+        element(".sub", "r/funny"),
+        dot(),
+        "5h",
+        dot(),
+        "u/charbodactyl",
+        dot()])
+
+      var domain = element(
+        "a",{
+        "href": ""},
+        element.raw("i.redd.it "),
+        icon("escape"))
+
+      var actions = element(
+        ".actions",
         element.style({
+          "width": "100%",
+          "line-height": "66px",
           "display": "flex",
-          "flex-direction": "row"}),[
+          "flex-direction": "row",
+          "justify-content": "space-between"}),[
         element(
           element.style({
-            "cursor": "pointer",
-            "border-right":
-              "2px solid #cfcfff",
-            "padding-right": "22px"}),
-          icon("dotdotdot")),
+            "display": "flex",
+            "flex-direction": "row"}),[
+          element(
+            element.style({
+              "cursor": "pointer",
+              "padding-right": "44px"}),
+            icon("share"),
+            " Share"),
+          element(
+            icon("bubble"),
+            " 257",
+            element.style({
+              "cursor": "pointer",
+              "padding-right": "44px"})),
+        ]),
         element(
           element.style({
-            "cursor": "pointer",
-            "padding-left": "22px"}),
-          icon("updoot"),
-          " 27.2k"),
+            "display": "flex",
+            "flex-direction": "row"}),[
+          element(
+            element.style({
+              "cursor": "pointer",
+              "border-right":
+                "2px solid #cfcfff",
+              "padding-right": "22px"}),
+            icon("dotdotdot")),
+          element(
+            element.style({
+              "cursor": "pointer",
+              "padding-left": "22px"}),
+            icon("updoot"),
+            " 27.2k"),
+          element(
+            element.style({
+              "padding-left": "22px"}),
+            icon("downdoot")),
+        ]),
+      ])
+
+      var post = element([
+        meta,
         element(
-          element.style({
-            "padding-left": "22px"}),
-          icon("downdoot")),
-      ]),
-    ])
-
-    var post = element([
-      meta,
-      element(
-        ".title",
-        "Didn't like his new friend"),
-      domain,
-      actions,
-    ])
-
-    var page = [header, sort, post]
-
-
+          ".title",
+          "Didn't like his new friend"),
+        domain,
+        actions,
+      ])
+      return post      
+    }
     var stylesheet = element.stylesheet([
       icon,
 
@@ -237,11 +250,44 @@ library.using(
         "text-decoration": "none"})
     ])
 
-    bridge.addToHead(
+    baseBridge.addToHead(
       stylesheet)
 
-    
-    site.addRoute("get", "/", bridge.requestHandler(page))
+    site.addRoute(
+      "get",
+      "/auth",
+      function(request, response) {
+        getAuthUrl(function(url) {
+          response.redirect(
+            url)})})
+
+    site.addRoute(
+      "get",
+      "/",
+      function(request, response) {
+        var error = request.query.error
+        var state = request.query.state
+        var code = request.query.code
+
+        var bridge = baseBridge.forResponse(
+          response)
+
+        if (state && code && states[state]) {
+          acceptARedditUserWarmly(
+            bridge,
+            state,
+            code)}
+
+        var page = [header, sort, post()]
+
+        bridge.send(
+          page)})
+
+    function acceptARedditUserWarmly(bridge, state, code) {
+
+        var url = "https://www.reddit.com/api/v1/access_token"
+    }
+
 
     site.start(3317)
   }
