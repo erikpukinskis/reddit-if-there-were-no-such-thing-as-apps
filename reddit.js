@@ -9,20 +9,10 @@ library.using(
     var baseBridge = new BrowserBridge()
     var site = new WebSite()
 
-    var states = {}
+    var redirectUrl = "http://localhost:3317/"
 
-    var encodedRedirectUri = encodeURIComponent(
-      "http://localhost:3317/")
-
-    function getAuthUrl(callback) {
-      console.log("getting auth url")
-      rando(
-        function(state) {
-          states[state] = true
-          var redditOauthUrl =
-            "https://www.reddit.com/api/v1/authorize?client_id=vILB1viG9BmpYg&response_type=code&state="+state+"&redirect_uri="+encodedRedirectUri+"&duration=temporary&scope=mysubreddits"
-            callback(
-              redditOauthUrl)})}
+    var encodedRedirectUrl = encodeURIComponent(
+      redirectUrl)
 
     function rando(callback) {
       crypto.randomBytes(
@@ -271,23 +261,90 @@ library.using(
 
         var bridge = baseBridge.forResponse(
           response)
+        var page = [header, sort, post()]
 
         if (state && code && states[state]) {
           acceptARedditUserWarmly(
             bridge,
             state,
-            code)}
+            code,
+            function() {
+              bridge.send(
+                page)})}
+        else {
+          bridge.send(
+            page)}
+      })
 
-        var page = [header, sort, post()]
 
-        bridge.send(
-          page)})
+    var people = {}
 
-    function acceptARedditUserWarmly(bridge, state, code) {
+    function getAuthUrl(callback) {
+      rando(
+        function(peopleId) {
+          people[peopleId] = {
+            accessToken: null,
+            refreshToken: null,
+            peopleId: null,
+          }
+          var redditOauthUrl =
+            "https://www.reddit.com/api/v1/authorize?client_id=vILB1viG9BmpYg&response_type=code&state="+peopleId+"&redirect_uri="+encodedRedirectUrl    +"&duration=temporary&scope=mysubreddits"
+            callback(
+              redditOauthUrl)})}
 
+    function acceptARedditUserWarmly(response, meId, code, calback) {
+  
         var url = "https://www.reddit.com/api/v1/access_token"
+
+        var postData = "grant_type=authorization_code&code="+code+"&redirect_uri="+redirectUrl
+
+        makeRequest({
+          "method": "post",
+          "url": url,
+          "data": postData
+        },function(json) {
+          var accessToken = 
+          var refreshToken = json[
+            "refresh_token"]
+          var me = people[meId]
+
+          me.accessToken = json[
+            "access_token"]
+          me.refreshToken = json[
+            "refresh_token"]
+          me.peopleId = meId
+
+          response.cookies.meId = meId
+
+          callback(accessToken)
+        })
     }
 
+
+    function refreshRedditToken(request, response, callback) {
+      var url = "https://www.reddit.com/api/v1/access_token"
+      var postData = "grant_type=refresh_token&refresh_token="+request.cookies.refreshToken
+
+      makeRequest({
+        "method": "post",
+        "url": url,
+        "data": postData
+      },function(data) {
+        var meId = request.cookies.meId
+        var me = people[
+          meId]
+
+        if (data["state"] !== meId) {
+          throw new Error(
+            "Uh uh honey")}
+
+        me.accessToken = data[
+          "access_token"]
+        me.refreshToken = data[
+          "refresh_token"]
+
+        callback()})
+    }
 
     site.start(3317)
   }
