@@ -2,12 +2,45 @@ var library = require("module-library")(require)
 
 // The Reddit Everyone Deserves Dang It
 
+library.define(
+  "people",
+  function() {
+    var people = {}
+    var seen = {}
+    function identify(person) {
+      people[person.peopleId] = person
+      delete seen[person.peopleId]
+    }
+
+    function see(peopleId) {
+      if (people[peopleId]) {
+        return
+      }
+      seen[peopleId] = peopleId
+    }
+
+    function remember(peopleId) {
+      return seen[peopleId] || people[peopleId]
+    }
+
+    people.identify = identify
+    people.see = see
+    people.remember = remember
+
+    return people
+  })
+
 library.using(
-  ["web-site", "browser-bridge", "web-element", "add-html", "crypto", "make-request"],
-  function(WebSite, BrowserBridge, element, addHtml, crypto, makeRequest) {
+  ["web-site", "browser-bridge", "web-element", "add-html", "crypto", "make-request", "a-wild-universe-appeared", "people"],
+  function(WebSite, BrowserBridge, element, addHtml, crypto, makeRequest, aWildUniverseAppeared, people) {
 
     var baseBridge = new BrowserBridge()
     var site = new WebSite()
+    var universe = aWildUniverseAppeared("treddi", {
+      "people": people
+    })
+    universe.persistToDisk()
+    universe.load()
 
     var redirectUri = "http://localhost:3317/"
 
@@ -263,7 +296,7 @@ library.using(
         var bridge = baseBridge.forResponse(
           response)
 
-        if (state && code && people[state]) {
+        if (state && code && people.remember(state)) {
           var meId = state
           acceptARedditUserWarmly(
             response,
@@ -295,7 +328,8 @@ library.using(
     function getStories(request, callback) {
       console.log("getting stories")
       var meId = request.cookies.meId
-      var me = people[meId]
+      var me = people.remember(meId)
+
       if (!me) {
         callback("who are you?")
         return}
@@ -313,7 +347,6 @@ library.using(
         })
     }
 
-    var people = {}
 
     function getAuthUrl(callback) {
       rando(
@@ -323,13 +356,10 @@ library.using(
               randomNumber))})}
 
     function buildAuthUrl(peopleId) {
-      people[peopleId] = {
-        accessToken: null,
-        refreshToken: null,
-        peopleId: null,
-      }
+      universe.do("people.see", peopleId)
+      people.see(peopleId)
       var url =
-        "https://www.reddit.com/api/v1/authorize?client_id=vILB1viG9BmpYg&response_type=code&state="+peopleId+"&redirect_uri="+encodedRedirectUri    +"&duration=temporary&scope=mysubreddits"
+        "https://www.reddit.com/api/v1/authorize?client_id=vILB1viG9BmpYg&response_type=code&state="+peopleId+"&redirect_uri="+encodedRedirectUri+"&duration=temporary&scope=identity+mysubreddits+vote"
       return url}
 
     var SECONDS = 1
@@ -339,14 +369,12 @@ library.using(
     var YEARS = 365*DAYS
 
     function acceptARedditUserWarmly(response, meId, code, callback) {
-      console.log("acceptance")
+      console.log("acceptance. state is "+meId+" code is "+code)
       var url = "https://www.reddit.com/api/v1/access_token"
-
-      var httpAuthUser = process.env.CLIENT_ID
-      var httpAuthPassword = process.env.CLIENT_SECRET
 
       console.log("\n\nThis is where the magic happens\n\n")
       debugger
+
       makeRequest({
         "method": "post",
         "url": url,
@@ -355,48 +383,48 @@ library.using(
           "code": code,
           "redirect_uri": redirectUri},
         "auth": {
-          "user": httpAuthUser,
-          "password": httpAuthPassword}},
-        function(json, response, error) {
-          saveAccessToken(
-            json,
-            response,
-            error,
-            callback)})}
+          "user": process.env.CLIENT_ID,
+          "password": process.env.CLIENT_SECRET}},
+        saveAccessToken)
 
-    function saveAccessToken(json, response, error, callback) {
-      debugger
-      if (!json) {
-        throw new Error("We just posted to "+url+"but we seemed to have got nothing back.")
+      function saveAccessToken(json) {
         debugger
-      }
-      console.log("\n--------\njson baybe!\n-------\n")
-      if (json.error) {
-        throw new Error("Got an error message from Reddit: "+json.error+" "+json.message)}
+        if (!json) {
+          throw new Error("We just posted to "+url+"but we seemed to have got nothing back.")
+          debugger
+        }
+        console.log("\n--------\njson baybe!\n-------\n")
+        if (json.error) {
+          throw new Error("Got an error message from Reddit: "+json.error+" "+json.message)}
 
-      if (json[
-        "access_token"]) {
-        console.log("got an access token! things are getting better!"+json[
-        "access_token"])}
+        if (json[
+          "access_token"]) {
+          console.log("got an access token! things are getting better!"+json[
+          "access_token"])}
 
-      var me = people[meId]
-      me.accessToken = json[
-        "access_token"]
-      me.refreshToken = json[
-        "refresh_token"]
-      me.peopleId = meId
-      console.log("setting the meId cookie, I think")
-      response.cookie(
-        "meId",
-        meId,{
-        maxAge: 1*YEARS})
-      callback()}
+        var person = {
+          accessToken: json[
+          "access_token"],
+          refreshToken: json[
+          "refresh_token"],
+          personId: meId}
+
+        universe.do("people.identify", person)
+        people.identify(person)
+
+        console.log("setting the meId cookie, I think")
+        response.cookie(
+          "meId",
+          meId,{
+          maxAge: 1*YEARS})
+        callback()}
+    }
 
 
     function refreshRedditTokens(request, response, callback) {
       var url = "https://www.reddit.com/api/v1/access_token"
       var meId = request.cookies.meId
-      var me = people[meId]
+      var me = people.remember(meId)
 
       makeRequest({
         "method": "post",

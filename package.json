@@ -1,8 +1,9 @@
 {
   "main": "reddit.js",
   "dependencies": {
-    "browser-bridge": "^0.188.0",
-    "make-request": "^0.46.0",
+    "a-wild-universe-appeared": "*",
+    "browser-bridge": "^0.189.0",
+    "make-request": "^0.48.0",
     "module-library": "*",
     "web-element": "*",
     "web-site": "*"
