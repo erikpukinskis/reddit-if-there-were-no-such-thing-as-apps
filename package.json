@@ -1,11 +1,11 @@
 {
   "main": "reddit.js",
   "dependencies": {
+    "browser-bridge": "^0.188.0",
+    "make-request": "^0.46.0",
     "module-library": "*",
-    "web-site": "*",
-    "browser-bridge": "*",
     "web-element": "*",
-    "make-request": "*"
+    "web-site": "*"
   },
   "repository": {
     "type": "git",

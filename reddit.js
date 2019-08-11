@@ -9,10 +9,10 @@ library.using(
     var baseBridge = new BrowserBridge()
     var site = new WebSite()
 
-    var redirectUrl = "http://localhost:3317/"
+    var redirectUri = "http://localhost:3317/"
 
-    var encodedRedirectUrl = encodeURIComponent(
-      redirectUrl)
+    var encodedRedirectUri = encodeURIComponent(
+      redirectUri)
 
     function rando(callback) {
       crypto.randomBytes(
@@ -255,96 +255,166 @@ library.using(
       "get",
       "/",
       function(request, response) {
+        console.log("hello")
         var error = request.query.error
         var state = request.query.state
         var code = request.query.code
-
+        console.log("Apparently thi user's code is "+code+" (state is "+state+")")
         var bridge = baseBridge.forResponse(
           response)
-        var page = [header, sort, post()]
 
-        if (state && code && states[state]) {
+        if (state && code && people[state]) {
+          var meId = state
           acceptARedditUserWarmly(
-            bridge,
-            state,
+            response,
+            meId,
             code,
-            function() {
-              bridge.send(
-                page)})}
+            sendSite.bind(
+              null,
+              request,
+              bridge))}
         else {
-          bridge.send(
-            page)}
+          sendSite(
+            request,
+            bridge)}
       })
 
+    function sendSite(request, bridge) {
+      console.log("site time!")
+      getStories(request, function(stories) {
+        if (stories == "who are you?") {
+          console.log("No idea who this is.")
+        } else {
+          console.log(stories ? "stories!" : "no stories!")
+        }
+        var page = [header, sort, post()]
+        bridge.send(page)
+      })
+    }
+
+    function getStories(request, callback) {
+      console.log("getting stories")
+      var meId = request.cookies.meId
+      var me = people[meId]
+      if (!me) {
+        callback("who are you?")
+        return}
+
+      var url = "https://oauth.reddit.com/users/new"
+      makeRequest({
+        "method": "get",
+        "url": url,
+        "headers": {
+          "Authorization": "bearer "+me.accessToken}},
+        function(data) {
+          console.log("mmm data")
+          debugger
+          callback(data)
+        })
+    }
 
     var people = {}
 
     function getAuthUrl(callback) {
       rando(
-        function(peopleId) {
-          people[peopleId] = {
-            accessToken: null,
-            refreshToken: null,
-            peopleId: null,
-          }
-          var redditOauthUrl =
-            "https://www.reddit.com/api/v1/authorize?client_id=vILB1viG9BmpYg&response_type=code&state="+peopleId+"&redirect_uri="+encodedRedirectUrl    +"&duration=temporary&scope=mysubreddits"
-            callback(
-              redditOauthUrl)})}
+        function(randomNumber) {
+          callback(
+            buildAuthUrl(
+              randomNumber))})}
 
-    function acceptARedditUserWarmly(response, meId, code, calback) {
-  
-        var url = "https://www.reddit.com/api/v1/access_token"
+    function buildAuthUrl(peopleId) {
+      people[peopleId] = {
+        accessToken: null,
+        refreshToken: null,
+        peopleId: null,
+      }
+      var url =
+        "https://www.reddit.com/api/v1/authorize?client_id=vILB1viG9BmpYg&response_type=code&state="+peopleId+"&redirect_uri="+encodedRedirectUri    +"&duration=temporary&scope=mysubreddits"
+      return url}
 
-        var postData = "grant_type=authorization_code&code="+code+"&redirect_uri="+redirectUrl
+    var SECONDS = 1
+    var MINUTES = 60*SECONDS
+    var HOURS = 60*MINUTES
+    var DAYS = 24*HOURS
+    var YEARS = 365*DAYS
 
-        makeRequest({
-          "method": "post",
-          "url": url,
-          "data": postData
-        },function(json) {
-          var accessToken = 
-          var refreshToken = json[
-            "refresh_token"]
-          var me = people[meId]
-
-          me.accessToken = json[
-            "access_token"]
-          me.refreshToken = json[
-            "refresh_token"]
-          me.peopleId = meId
-
-          response.cookies.meId = meId
-
-          callback(accessToken)
-        })
-    }
-
-
-    function refreshRedditToken(request, response, callback) {
+    function acceptARedditUserWarmly(response, meId, code, callback) {
+      console.log("acceptance")
       var url = "https://www.reddit.com/api/v1/access_token"
-      var postData = "grant_type=refresh_token&refresh_token="+request.cookies.refreshToken
+
+      var httpAuthUser = process.env.CLIENT_ID
+      var httpAuthPassword = process.env.CLIENT_SECRET
+
+      console.log("\n\nThis is where the magic happens\n\n")
+      debugger
+      makeRequest({
+        "method": "post",
+        "url": url,
+        "formData": {
+          "grant_type": "authorization_code",
+          "code": code,
+          "redirect_uri": redirectUri},
+        "auth": {
+          "user": httpAuthUser,
+          "password": httpAuthPassword}},
+        function(json, response, error) {
+          saveAccessToken(
+            json,
+            response,
+            error,
+            callback)})}
+
+    function saveAccessToken(json, response, error, callback) {
+      debugger
+      if (!json) {
+        throw new Error("We just posted to "+url+"but we seemed to have got nothing back.")
+        debugger
+      }
+      console.log("\n--------\njson baybe!\n-------\n")
+      if (json.error) {
+        throw new Error("Got an error message from Reddit: "+json.error+" "+json.message)}
+
+      if (json[
+        "access_token"]) {
+        console.log("got an access token! things are getting better!"+json[
+        "access_token"])}
+
+      var me = people[meId]
+      me.accessToken = json[
+        "access_token"]
+      me.refreshToken = json[
+        "refresh_token"]
+      me.peopleId = meId
+      console.log("setting the meId cookie, I think")
+      response.cookie(
+        "meId",
+        meId,{
+        maxAge: 1*YEARS})
+      callback()}
+
+
+    function refreshRedditTokens(request, response, callback) {
+      var url = "https://www.reddit.com/api/v1/access_token"
+      var meId = request.cookies.meId
+      var me = people[meId]
 
       makeRequest({
         "method": "post",
         "url": url,
-        "data": postData
-      },function(data) {
-        var meId = request.cookies.meId
-        var me = people[
-          meId]
+        "formData": {
+          "grant_type": "refresh_token",
+          "refresh_token": me.refreshToken}},
+        function(data) {
+          if (data["state"] !== meId) {
+            throw new Error(
+              "Uh uh honey")}
 
-        if (data["state"] !== meId) {
-          throw new Error(
-            "Uh uh honey")}
+          me.accessToken = data[
+            "access_token"]
+          me.refreshToken = data[
+            "refresh_token"]
 
-        me.accessToken = data[
-          "access_token"]
-        me.refreshToken = data[
-          "refresh_token"]
-
-        callback()})
-    }
+          callback()})}
 
     site.start(3317)
   }
