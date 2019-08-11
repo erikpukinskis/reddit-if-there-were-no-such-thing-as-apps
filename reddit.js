@@ -20,7 +20,7 @@ library.define(
     }
 
     function remember(peopleId) {
-      return seen[peopleId] || people[peopleId]
+      return people[peopleId] || seen[peopleId]
     }
 
     people.identify = identify
@@ -41,6 +41,8 @@ library.using(
     })
     universe.persistToDisk()
     universe.load()
+
+    var COLOR = "#cfcfff"
 
     var redirectUri = "http://localhost:3317/"
 
@@ -128,24 +130,62 @@ library.using(
 
 
 
-    var header = element(
+    var header = element.template(
+      ".header",
       element.style({
         "width": "100%",
         "display": "flex",
         "flex-direction": "row",
-        "justify-content": "space-between"}),[
+        "justify-content": "space-between"}),
       element(
         icon("alien"),
         icon("logotype"),
         icon("choice")),
-      element(
-        icon("pencil"),
-        icon("search"),
-        element(
-          "a",{
-          "href": "/auth"},
-          icon("hamburger"))),
-    ])
+      function(hamburger) {
+        this.addChild(element(
+          icon("pencil"),
+          icon("search"),
+          hamburger))
+      })
+
+    var dropdown = element.template(
+      ".dropdown",
+      element.style({
+        "position": "relative",
+        "display": "inline-block",
+
+        " .content": {
+          "position": "absolute",
+          "width": "200px",
+          "top": "20px",
+          "display": "none"
+        },
+
+        " .content.open": {
+          "display": "block",
+          "right": "0",
+          "top": "100%",
+          "background": "white",
+          "border": "2px solid "+COLOR,
+          "padding": "8px 10px"
+        },
+      }),
+      function(bridge, trigger, content) {
+        var toggleMenu = bridge.remember("toggle-menu")
+        if (!toggleMenu) {
+          var toggleMenu = bridge.defineFunction(
+            function toggleMenu(menuId) {
+              var menuNode = document.getElementById(menuId)
+              var isOpen = menuNode.classList.contains("open")
+              menuNode.classList[isOpen ? "remove" : "add"]("open")
+            })
+          bridge.see("toggle-menu", toggleMenu)
+        }
+        this.addChild(trigger)
+        trigger.onclick(toggleMenu.withArgs(content.assignId()).evalable())
+        content.addSelector(".content")
+        this.addChild(content)
+      })
 
     var sort = element(
       element.style({
@@ -245,8 +285,11 @@ library.using(
       ])
       return post      
     }
+
     var stylesheet = element.stylesheet([
       icon,
+      header,
+      dropdown,
 
       element.style(
         "body", {
@@ -254,7 +297,7 @@ library.using(
           "margin": "15px",
           "font-size": "32px",
           "line-height": "44px",         
-          "color": "#cfcfff",
+          "color": COLOR,
           "font-family": "sans-serif"}),
 
       dot,
@@ -314,36 +357,63 @@ library.using(
 
     function sendSite(request, bridge) {
       console.log("site time!")
-      getStories(request, function(stories) {
-        if (stories == "who are you?") {
-          console.log("No idea who this is.")
+      var meId = request.signedCookies.meId
+      var me = people.remember(meId)
+
+      if (me) {
+        console.log("I have an access token! "+me.accessToken)}
+
+      getMe(request, function(me) {
+        console.log("got me")
+        if (me) {
+          var account = element(me.name)
+          var hamburger = dropdown(
+            bridge,
+            icon("hamburger"),
+            account)
         } else {
-          console.log(stories ? "stories!" : "no stories!")
+          var hamburger = element(
+            "a",{
+            "href": "/auth"},
+            icon("hamburger"))
         }
-        var page = [header, sort, post()]
+
+        var page = [header(hamburger), sort]
+
+        if (me == "who are you?") {
+          console.log("No idea who this is.")
+        }
+
         bridge.send(page)
       })
     }
 
-    function getStories(request, callback) {
+    function getMe(request, callback) {
       console.log("getting stories")
-      var meId = request.cookies.meId
+      var meId = request.signedCookies.meId
       var me = people.remember(meId)
 
       if (!me) {
         callback("who are you?")
         return}
 
-      var url = "https://oauth.reddit.com/users/new"
+      var url = "https://oauth.reddit.com/api/v1/me"
       makeRequest({
         "method": "get",
         "url": url,
         "headers": {
+          "User-Agent": "web:treddi:0.1.0 (by /u/epukinsk)",
           "Authorization": "bearer "+me.accessToken}},
         function(data) {
-          console.log("mmm data")
-          debugger
-          callback(data)
+          data = JSON.parse(data)
+          if (data.error) {
+            console.log("Got an error message from Reddit: "+data.error+" "+data.message)
+            callback()
+          } else {
+            debugger
+            console.log("mmm data")
+            callback(data)
+          }
         })
     }
 
@@ -423,7 +493,7 @@ library.using(
 
     function refreshRedditTokens(request, response, callback) {
       var url = "https://www.reddit.com/api/v1/access_token"
-      var meId = request.cookies.meId
+      var meId = request.signedCookies.meId
       var me = people.remember(meId)
 
       makeRequest({
